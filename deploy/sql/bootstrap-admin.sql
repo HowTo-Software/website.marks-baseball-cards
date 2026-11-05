@@ -1,6 +1,7 @@
--- TEMPLATE ONLY. Generate a personalized copy with tools/MarksBaseballCards.AdminBootstrap.
+-- PARAMETERIZED SCRIPT. Use tools/MarksBaseballCards.AdminBootstrap create/apply.
 -- A real password must NEVER be written here, passed to sqlcmd or committed.
--- The generated script contains an email and a salted ASP.NET Identity password hash.
+-- The checked-in SQL contains no credentials. @AdminEmail and @AdminPasswordHash
+-- are provided as typed SQL parameters after decrypting the operator's package in memory.
 -- Run with a separate deployment account after applying card-photo-onboarding.sql.
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -9,12 +10,9 @@ IF DB_NAME() <> N'Website_Application_MarksBaseballCardsDb'
 IF OBJECT_ID(N'dbo.Users', N'U') IS NULL
     THROW 51000, 'Apply the reviewed schema migrations before creating staff.', 1;
 
-DECLARE @AdminEmail nvarchar(64) = N'REPLACE_WITH_ADMIN_EMAIL';
-DECLARE @AdminPasswordHash nvarchar(256) = N'REPLACE_WITH_IDENTITY_HASH';
-IF @AdminEmail = N'REPLACE_WITH_ADMIN_EMAIL' OR @AdminEmail NOT LIKE N'%_@_%._%'
-    THROW 51000, 'Generate this script with a valid admin email.', 1;
-IF @AdminPasswordHash = N'REPLACE_WITH_IDENTITY_HASH'
-    OR LEN(@AdminPasswordHash) < 84
+IF @AdminEmail IS NULL OR @AdminEmail NOT LIKE N'%_@_%._%'
+    THROW 51000, 'Supply a valid admin email parameter.', 1;
+IF @AdminPasswordHash IS NULL OR LEN(@AdminPasswordHash) < 84
     OR LEFT(@AdminPasswordHash, 2) <> N'AQ'
     THROW 51000, 'A generated ASP.NET IdentityV3 hash is required; never use plaintext or SQL HASHBYTES.', 1;
 

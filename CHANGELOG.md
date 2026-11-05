@@ -2,7 +2,12 @@
 
 ## Unreleased - real collection and photo onboarding
 
-- Add a protected, interactive email/admin SQL generator using salted IdentityV3
+- Resolve the bootstrap artifact's CodeQL cleartext/private-data findings: store email
+  and password hash only inside an authenticated AES-256-GCM package, protected by a
+  separate passphrase. Apply the reviewed static SQL with typed parameters after
+  in-memory decryption; never generate a readable credentials SQL file.
+
+- Add an interactive encrypted admin package and parameterized SQL apply workflow using salted IdentityV3
   PBKDF2-SHA512 hashes, without plaintext credentials or silent password resets.
 - Remove live demo card seeding; retain only the separate historical archive.
 - Enforce certificate-validated SQL TLS and HTTPS in Production, restrict JWT algorithms,

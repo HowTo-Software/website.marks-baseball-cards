@@ -44,6 +44,7 @@ packages/
 # ---- Logs / temp ----
 *.log
 artifacts/
+*.enc
 **/App_Data/
 logs/
 *.tmp

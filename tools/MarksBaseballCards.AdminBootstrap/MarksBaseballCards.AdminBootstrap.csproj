@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.7" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+    <EmbeddedResource Include="../../deploy/sql/bootstrap-admin.sql" LogicalName="bootstrap-admin.sql" />
+  </ItemGroup>
 </Project>

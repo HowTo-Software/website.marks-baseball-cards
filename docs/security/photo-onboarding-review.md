@@ -1,53 +1,77 @@
 # Administrator bootstrap and photo onboarding security review
 
-Source review and local tests: November 4, 2026. This is not an external penetration
-test, a guarantee of zero risk, or evidence that production encryption is configured.
+Initial source review: November 4, 2026. CodeQL artifact follow-up: November 5, 2026.
+This is not an external penetration test, a guarantee of zero risk, or evidence that
+production encryption is configured.
 
-## Create the administrator without exposing a password
+## Create the administrator without a readable credentials file
 
-The repository ships `deploy/sql/bootstrap-admin.sql` as a placeholder-only template.
-It does not contain an actual email/password or a usable default account. To personalize it:
+The repository ships `deploy/sql/bootstrap-admin.sql` as a static, parameterized SQL
+script. It contains no email, password or usable default account. The first implementation
+generated an owner-restricted SQL file containing the email and password hash; CodeQL
+reported cleartext-sensitive storage and private-information exposure at that file write.
+Those reports are addressed by removing that plaintext export path, without suppressing
+or dismissing the queries.
+
+Create an encrypted administrator package offline:
 
 ```powershell
 # From the repository root, in an interactive terminal:
-dotnet run --project tools/MarksBaseballCards.AdminBootstrap -c Release
+dotnet run --project tools/MarksBaseballCards.AdminBootstrap -c Release -- create
 ```
 
-Enter the owner's email and a unique 16-128 character passphrase twice. Password entry is
-hidden; passwords are not accepted as command-line arguments or redirected standard input.
-Use a password manager to retain the original passphrase; the generated hash is not a
-recoverable copy. The email must fit the existing 64-character username column.
+Enter the owner's email, a unique 16-128 character administrator password and a **different**
+16-128 character package passphrase. Passwords/passphrases are entered twice, hidden, never
+passed as command-line arguments or redirected standard input. The email must fit the
+existing 64-character username column.
 
-The tool generates `artifacts/admin-bootstrap.sql`, ignored by Git. It contains the email
-and a salted ASP.NET IdentityV3 PBKDF2-HMAC-SHA512 password hash with 210,000 iterations,
-a 128-bit random salt and a 256-bit derived key. The original password is never written
-to the SQL file, console output or database. Passwords exist transiently in managed memory
-during hashing; do not run the tool on an untrusted machine.
+The password is hashed with IdentityV3 PBKDF2-HMAC-SHA512 (210,000 iterations, random
+128-bit salt, 256-bit derived key). The email and hash are then encrypted together into
+`artifacts/admin-bootstrap.enc` using AES-256-GCM with a fresh random 128-bit salt,
+96-bit nonce and 128-bit authentication tag. A separate encryption key is derived from
+the package passphrase using PBKDF2-HMAC-SHA512 with 210,000 iterations. The versioned
+envelope authenticates its format; invalid versions, oversized/truncated input, tampering
+and incorrect passphrases are rejected.
 
-The output file is created without overwriting an existing file. On Windows it is restricted
-to the current user's SID; on Unix it is created with owner-only read/write permissions.
-Protect even a hash-bearing SQL file: hashes can be attacked offline if stolen. Keep the
-generated file outside tickets, PR descriptions and CI logs. Review it, transfer it through
-an approved protected channel, run it with a deployment/DBA identity in the intended database,
-then remove the temporary copy according to the operator's secure handling procedure.
+No plaintext SQL, email or hash is written to a file or console. The package passphrase
+and encryption key are not stored beside the package. Keep both passwords in a password
+manager, separate from the artifact. If the package passphrase is lost, regenerate a new
+package rather than attempting key recovery. Only ciphertext is persisted; generated
+packages remain ignored by Git and excluded from the application container.
 
-Run in this order:
+Files are created without overwriting an existing output, restricted to the current user's
+SID on Windows or mode 0600 on Unix. File permissions remain defense in depth. Protect the
+encrypted artifact and its passphrase through separate approved transfer channels.
 
-1. Back up the existing database and review its migration history.
-2. Apply `deploy/sql/card-photo-onboarding.sql` with a deployment account.
-3. Run the locally generated admin SQL in `Website_Application_MarksBaseballCardsDb`.
-4. Provision the separate `marks_app` SQL login and apply reviewed table grants from
-   `deploy/sql/application-permissions.sql`; never grant the web app `sa`, `db_owner`
-   or migration privileges.
-5. Configure the API securely, sign in through HTTPS using the owner's email and original
-   password, then enter actual inventory through `/admin`.
+## Apply the package explicitly
 
-Bootstrap creation is transactional and protected by the unique username index. A repeat
-run with an existing Admin email leaves its password and role unchanged; an existing
-different role is rejected. The script never deletes users or rotates an existing password
-silently. It uses `Admin`, which manages cards, separately from `SystemAdmin` statistics.
-SQL literals are escaped and SQLCMD substitution characters are rejected in generated emails.
-No SQL `HASHBYTES` shortcut or reversibly encrypted password is used.
+1. Back up the intended database and review its migration history.
+2. Apply `deploy/sql/card-photo-onboarding.sql` using a deployment/DBA account.
+3. Set `MARKS_ADMIN_BOOTSTRAP_CONNECTION` securely in the operator's process environment.
+   It must explicitly target `Website_Application_MarksBaseballCardsDb`, use certificate-
+   validated SQL TLS and have `Persist Security Info=False`. Prefer an appropriate
+   integrated identity where supported; never commit or print a connection password.
+4. Place the encrypted package at `artifacts/admin-bootstrap.enc` on the operator's
+   trusted machine and run:
+   `dotnet run --project tools/MarksBaseballCards.AdminBootstrap -c Release -- apply`.
+5. Enter the package passphrase and explicitly confirm `APPLY`. Creation mode never
+   contacts a database; only this deliberately selected apply mode opens the connection.
+6. Apply mode decrypts the package **only in memory**, loads the reviewed SQL embedded in
+   the tool and binds `@AdminEmail` / `@AdminPasswordHash` as typed SQL parameters.
+   No user value is interpolated into SQL text or logged. Keys and temporary plaintext
+   byte buffers are cleared after use. Managed strings still exist transiently in memory;
+   do not use an untrusted machine or collect sensitive process dumps.
+7. Provision the separate least-privilege `marks_app` SQL login and review table grants
+   from `deploy/sql/application-permissions.sql`. The web app must never use a DBA login.
+8. Sign in through HTTPS using the owner's email and original administrator password;
+   clear the temporary deployment connection environment and handle package retention
+   according to the operator's protected-secret policy.
+
+Bootstrap creation is transactional and serialized by the unique username index. A repeat
+run with an existing Admin email leaves its password/role unchanged; a different existing
+role is rejected. The script does not delete users or reset passwords silently. A cancelled
+apply, wrong passphrase, tampered package or invalid TLS/database configuration fails before
+opening a database connection. No plaintext password or SQL `HASHBYTES` shortcut is used.
 
 ## Encryption boundaries and production setup
 
@@ -110,9 +134,10 @@ can naturally be downloaded by visitors; this is not end-to-end encryption of pu
 
 ## Validation and remaining boundaries
 
-Release solution build: zero warnings/errors. Local automated suite: 29 passing tests;
-two actual-SQL-Server tests skipped because no isolated server is installed locally.
-Tests cover generated hash compatibility and random salts, SQL escaping and invalid input,
+Release solution build: zero warnings/errors. The initial suite passed 29 tests locally;
+two actual-SQL-Server tests require the isolated CI service. Package encryption/authentication,
+wrong-passphrase/tamper rejection and static SQL parameterization have dedicated regression tests.
+Tests cover generated hash compatibility and random salts, typed SQL parameters and invalid input,
 real API login, non-cacheable credentials, generic lockout errors, production SQL guards,
 forged JWTs, draft privacy, publication/sale separation, image processing, quotas, and
 30 MiB acceptance/rejection boundaries. SQL rowversion and idempotent admin SQL are
@@ -120,7 +145,8 @@ configured to run against a disposable SQL Server service in pull-request CI.
 
 Browser checks use mock API data and cover compact desktop/mobile forms, pre-save previews,
 upload/publication, English/PT-BR and dark theme. They are UI evidence, not production SQL
-or payment validation. The temporary demo server is loopback-only and is not shipped.
+or payment validation. The temporary demo server is loopback-only and is not shipped. The initial PR CI passed
+all 31 original tests; the CodeQL follow-up adds package-specific checks.
 
 Existing JWT storage remains localStorage, so an XSS defect could expose a session;
 HTTP-only session/MFA migration is outside this PR. A strict application-wide CSP needs
