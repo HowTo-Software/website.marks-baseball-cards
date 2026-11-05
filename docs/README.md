@@ -1,5 +1,10 @@
 # Frontend documentation
 
+**November 4 implementation:** see [Real collection and photo onboarding](phase-3-development/photo-onboarding.md)
+for the current admin workflow, SQL Server schema/scripts, private photo storage, security,
+performance limits and staged deployment. The lifecycle pages below retain their October baseline.
+See also [Secure administrator bootstrap and encryption review](security/photo-onboarding-review.md).
+
 **Status:** source-backed frontend handoff. **Maintainers:** HTS frontend contributors.
 **Updated:** October 3, 2026. **Source baseline:** `39a8ecc`.
 

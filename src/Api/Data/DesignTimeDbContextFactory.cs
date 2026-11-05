@@ -12,19 +12,8 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
 {
     public AppDbContext CreateDbContext(string[] args)
     {
-        var config = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile("appsettings.Development.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
-
-        var connectionString = config.GetConnectionString("Default");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            connectionString =
-                "Server=localhost;Database=Website_Application_MarksBaseballCardsDb;User Id=sa;Password=Placeholder_1;TrustServerCertificate=True";
-        }
+        // Schema generation is offline: never discover a production connection from local secrets.
+        const string connectionString = "Server=localhost;Database=Website_Application_MarksBaseballCardsDb;Integrated Security=True;Encrypt=True";
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer(connectionString)

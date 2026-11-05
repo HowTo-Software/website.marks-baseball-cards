@@ -21,6 +21,7 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     [AllowAnonymous]
     [EnableRateLimiting("login")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
     {
         var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";

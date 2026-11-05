@@ -7,26 +7,24 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.9" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.13.0" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
+    <PackageReference Include="SkiaSharp" Version="4.154.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.154.0" />
     <PackageReference Include="Stripe.net" Version="52.1.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Shared\MarksBaseballCards.Shared.csproj" />
     <ProjectReference Include="..\Client\MarksBaseballCards.Client.csproj" />
-  </ItemGroup>
-
-  <!-- Embed the seed data so it ships inside the published image. -->
-  <ItemGroup>
-    <Content Remove="Data\seed-cards.json" />
-    <EmbeddedResource Include="Data\seed-cards.json" />
   </ItemGroup>
 
 </Project>

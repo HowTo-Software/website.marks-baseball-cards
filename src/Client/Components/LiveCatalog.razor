@@ -1,0 +1,81 @@
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<section class="page-intro container-width"><p class="eyebrow">@L[Market ? "Find your next keeper" : "Mark’s real collection"]</p><div class="page-title-row"><h1>@L["The"] <em>@L[Market ? "marketplace." : "collection."]</em></h1></div><p>@L["Real photographs and descriptions, published by the collector. Only cards marked for sale can be purchased."]</p><a class="text-link" href="archive">@L["Explore the original 1991 checklist"] <Icon Name="arrow" /></a></section>
+<section class="container-width collection-content">
+    <div class="browse-toolbar">
+        <div class="search-field"><Icon Name="search" /><input type="search" maxlength="100" aria-label="@L["Search collection by player or card number"]" placeholder="@L["Find a player or card number..."]" @bind="_search" @bind:event="oninput" @bind:after="SearchChanged" /></div>
+        <div class="toolbar-right">
+            @if (Market) { <label class="checkbox-label"><input type="checkbox" @bind="_sold" @bind:after="SearchChanged" /> @L["Include sold"]</label> }
+            <select aria-label="@L["Sort listings"]" @bind="_sort" @bind:after="SearchChanged"><option value="newest">@L["Newest additions"]</option><option value="name">@L["Player A–Z"]</option><option value="price-low">@L["Price: low to high"]</option><option value="price-high">@L["Price: high to low"]</option></select>
+        </div>
+    </div>
+    <div class="browse-subbar"><div class="filter-chips">@foreach (var filter in Filters) { <button class="filter-chip @(_category == filter.Value ? "selected" : "")" aria-pressed="@(_category == filter.Value ? "true" : "false")" @onclick="() => SelectCategory(filter.Value)">@L[filter.Label]</button> }</div><span role="status">@_total @L["records"]</span></div>
+    @if (_error is not null) { <div class="inline-notice notice-error" role="alert">@L[_error]<button class="text-button" @onclick="() => LoadPage(_page)">@L["Try again"]</button></div> }
+    @if (_loading) { <div class="catalog-grid" aria-label="@L["Loading collection"]">@for (var i = 0; i < 4; i++) { <div class="card-skeleton"><div></div><span></span><span></span></div> }</div> }
+    else if (_cards.Count == 0 && _error is null) { <div class="empty-state"><h2>@L["No cards to show."]</h2><p>@L["Published cards will appear here. Try another search or visit again soon."]</p></div> }
+    else
+    {
+        <div class="catalog-grid">@foreach (var card in _cards)
+        {
+            <article class="listing-card" @key="card.Id">
+                <button class="card-art-wrap" aria-label="@L.Format("View {0}, card {1}", card.PlayerName, card.CardNumber)" @onclick="() => Show(card.Id)"><CardImage PhotoId="card.CoverPhotoId" Number="@card.CardNumber" PlayerName="@card.PlayerName" /><span class="card-open"><Icon Name="eye" /></span></button>
+                <div class="listing-info"><div class="card-meta"><span>@L["From the collection"]</span><span>#@card.CardNumber</span></div><h3><button class="plain-button" @onclick="() => Show(card.Id)">@card.PlayerName</button></h3><div class="card-tags"><span class="tag">@(card.Condition ?? L["Condition not listed"])</span><span class="tag">@L[card.IsSold ? "Sold" : card.IsForSale ? "For sale" : "Collection only"]</span></div>@if (card.IsForSale && !card.IsSold) { <div class="listing-bottom"><span class="listing-price">@L.Usd(card.Price) <small>USD</small></span><button class="button button-primary button-small" disabled="@_buying" @onclick="() => Buy(card)">@L["Buy card"]</button></div> }</div>
+            </article>
+        }</div>
+    }
+    <Pagination Page="_page" Pages="_pages" Total="_total" Busy="_loading" Changed="ChangePage" />
+</section>
+<Modal @ref="_modal" Title="@L["Card details"]">
+    @if (_selected is { } selected)
+    {
+        <div class="detail-grid"><div><CardImage PhotoId="_activePhoto" Number="@selected.CardNumber" PlayerName="@selected.PlayerName" Large="true" /><div class="photo-thumbnails">@foreach (var photo in selected.Photos.OrderBy(p => p.Position)) { <button type="button" aria-label="@(string.IsNullOrWhiteSpace(photo.Caption) ? L["View photograph"] : photo.Caption)" @onclick="() => _activePhoto = photo.Id"><img src="@photo.ThumbnailUrl" alt="@photo.Caption" width="72" height="100" /></button> }</div></div><div class="detail-copy"><p class="eyebrow">#@selected.CardNumber</p><h2>@selected.PlayerName</h2><p class="preserve-lines">@selected.Description</p><dl class="detail-facts"><div><dt>@L["Condition"]</dt><dd>@selected.Condition</dd></div><div><dt>@L["Listing notes"]</dt><dd class="preserve-lines">@selected.ListingNotes</dd></div></dl>@if (selected.IsForSale && !selected.IsSold) { <p>@L.Usd(selected.Price) USD</p><button class="button button-primary" disabled="@_buying" @onclick="() => Buy(selected)">@L["Continue to Stripe"]</button> }</div></div>
+    }
+</Modal>
+@code {
+    [Parameter] public bool Market { get; set; }
+    [Parameter] public string InitialSearch { get; set; } = "";
+    private static readonly (string Value, string Label)[] Filters = [("all", "All cards"), ("rookie", "Rookie markers"), ("royals", "Royals")];
+    private List<MarketplaceCardDto> _cards = [];
+    private string _search = "", _category = "all", _sort = "newest";
+    private string? _initial, _error;
+    private bool _sold, _loading, _buying;
+    private int _page = 1, _pages = 1, _total, _request;
+    private CancellationTokenSource? _load;
+    private Modal? _modal;
+    private MarketplaceCardDto? _selected;
+    private Guid? _activePhoto;
+    protected override async Task OnParametersSetAsync() { if (_initial != InitialSearch) { _initial = InitialSearch; _search = InitialSearch; await LoadPage(1); } }
+    private Task ChangePage(int page) => LoadPage(page);
+    private Task SearchChanged() => LoadPage(1, true);
+    private Task SelectCategory(string value) { _category = value; return LoadPage(1); }
+    private async Task LoadPage(int page, bool debounce = false)
+    {
+        _load?.Cancel(); _load?.Dispose(); _load = new();
+        var ct = _load.Token; var request = ++_request; _page = page; _loading = true; _error = null;
+        try
+        {
+            if (debounce) await Task.Delay(350, ct);
+            var result = await Api.GetPublicPageAsync(Market, _search, _category, _sort, _sold, page, ct) ?? new();
+            if (request != _request) return;
+            _cards = result.Items; _pages = result.TotalPages; _total = result.TotalCount;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException) { if (request == _request) _error = "The collection could not be loaded. Please try again."; }
+        finally { if (request == _request) _loading = false; }
+    }
+    private async Task Show(int id)
+    {
+        try { _selected = await Api.GetPublicCardAsync(id); if (_selected is null) return; _activePhoto = _selected.CoverPhotoId; StateHasChanged(); if (_modal is not null) await _modal.OpenAsync(); }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { _error = "The card could not be loaded."; }
+    }
+    private async Task Buy(MarketplaceCardDto card)
+    {
+        if (_buying || card.IsSold || !card.IsForSale) return;
+        _buying = true;
+        try { var result = await Api.StartCheckoutAsync(card.Id); if (!result.Ok || result.Value is null) { _error = result.Error; return; } if (!Uri.TryCreate(result.Value.Url, UriKind.Absolute, out var url) || url.Scheme != "https" || url.Host != "checkout.stripe.com") { _error = "The checkout address could not be verified. Please try again."; return; } Nav.NavigateTo(url.AbsoluteUri, true); }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { _error = "The checkout could not be started. Please try again."; }
+        finally { _buying = false; }
+    }
+    public override void Dispose() { _load?.Cancel(); _load?.Dispose(); base.Dispose(); }
+}

@@ -43,6 +43,8 @@ packages/
 
 # ---- Logs / temp ----
 *.log
+artifacts/
+**/App_Data/
 logs/
 *.tmp
 

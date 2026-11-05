@@ -3,6 +3,11 @@ namespace MarksBaseballCards.Shared.Models;
 /// <summary>Full card representation returned to authenticated admin users.</summary>
 public class CardDto
 {
+    public string? Description { get; set; }
+    public bool IsPublished { get; set; }
+    public byte[]? RowVersion { get; set; }
+    public int PhotoCount { get; set; }
+    public List<CardPhotoDto> Photos { get; set; } = [];
     public int Id { get; set; }
     public string CardNumber { get; set; } = string.Empty;
     public string PlayerName { get; set; } = string.Empty;

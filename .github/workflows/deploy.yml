@@ -13,6 +13,18 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: mcr.microsoft.com/dotnet/sdk:10.0
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_PID: Developer
+          # Disposable CI-only fixture. No host ports or production credentials.
+          MSSQL_SA_PASSWORD: 'Marks-CI-Only!2026-Database'
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Marks-CI-Only!2026-Database' -C -Q 'SELECT 1' -b"
+          --health-interval=10s --health-timeout=5s --health-retries=20
     steps:
     - uses: actions/checkout@v7
 
@@ -22,6 +34,11 @@ jobs:
 
     - name: Build
       run: dotnet build src/Api/MarksBaseballCards.Api.csproj -c Release
+
+    - name: Isolated SQL Server photo and authorization tests
+      env:
+        MARKS_TEST_SQLSERVER: 'Server=sqlserver,1433;Database=MarksCardsTests_ci;User Id=sa;Password=Marks-CI-Only!2026-Database;Encrypt=True;TrustServerCertificate=True'
+      run: dotnet test tests/MarksBaseballCards.Tests/MarksBaseballCards.Tests.csproj -c Release --verbosity minimal
 
   # Runs on the self-hosted runner on 192.168.1.210, copies the checkout to
   # /opt/Marks-BaseBallCards on 192.168.1.206 over SSH (alias marks-deploy-206 in
@@ -70,7 +87,7 @@ jobs:
       run: ssh "$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose -p '$COMPOSE_PROJECT_NAME' up -d --build --remove-orphans"
 
     - name: Health check
-      run: curl --fail --silent --show-error --output /dev/null --retry 30 --retry-all-errors --retry-delay 3 http://192.168.1.206:8090/
+      run: curl --fail --silent --show-error --output /dev/null --retry 30 --retry-all-errors --retry-delay 3 http://192.168.1.206:8090/health/live
 
     - name: Prune dangling images on 206
       if: success()

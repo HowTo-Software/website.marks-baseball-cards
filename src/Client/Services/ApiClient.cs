@@ -13,8 +13,38 @@ public record ApiResult<T>(bool Ok, T? Value, string? Error)
 }
 
 /// <summary>Typed wrapper over the existing API; network errors remain recoverable in the UI.</summary>
-public class ApiClient(HttpClient http)
+public class ApiClient(HttpClient http, IHttpClientFactory clients)
 {
+    public Task<PageResult<MarketplaceCardDto>?> GetFeaturedAsync() => http.GetFromJsonAsync<PageResult<MarketplaceCardDto>>("api/collection?pageSize=4");
+    public Task<PageResult<CardDto>?> GetCardsPageAsync(string search, string status, int page, CancellationToken ct) =>
+        http.GetFromJsonAsync<PageResult<CardDto>>($"api/cards/page?page={page}&pageSize=25&search={Uri.EscapeDataString(search)}&status={Uri.EscapeDataString(status)}", ct);
+    public Task<CardDto?> GetCardAsync(int id, CancellationToken ct = default) => http.GetFromJsonAsync<CardDto>($"api/cards/{id}", ct);
+    public Task<PageResult<MarketplaceCardDto>?> GetPublicPageAsync(bool market, string search, string category, string sort, bool sold, int page, CancellationToken ct) =>
+        http.GetFromJsonAsync<PageResult<MarketplaceCardDto>>($"api/{(market ? "marketplace/page" : "collection")}?page={page}&pageSize=24&search={Uri.EscapeDataString(search)}&category={Uri.EscapeDataString(category)}&sort={Uri.EscapeDataString(sort)}&includeSold={sold}", ct);
+    public Task<MarketplaceCardDto?> GetPublicCardAsync(int id, CancellationToken ct = default) => http.GetFromJsonAsync<MarketplaceCardDto>($"api/collection/{id}", ct);
+    public Task<ApiResult<bool>> DeletePhotoAsync(int cardId, Guid photoId) => PhotoMutation($"api/cards/{cardId}/photos/{photoId}", false);
+    public Task<ApiResult<bool>> SetCoverAsync(int cardId, Guid photoId) => PhotoMutation($"api/cards/{cardId}/photos/{photoId}/cover", true);
+    private async Task<ApiResult<bool>> PhotoMutation(string url, bool put)
+    {
+        using var response = put ? await http.PutAsync(url, null) : await http.DeleteAsync(url);
+        return response.IsSuccessStatusCode ? ApiResult<bool>.Success(true) : ApiResult<bool>.Fail(await ReadErrorAsync(response));
+    }
+    public async Task<string> PhotoPreviewAsync(Guid id) => "data:image/jpeg;base64," + Convert.ToBase64String(await http.GetByteArrayAsync($"api/card-photos/{id}/thumbnail"));
+    public async Task<ApiResult<CardPhotoDto>> UploadPhotoAsync(int cardId, Microsoft.AspNetCore.Components.Forms.IBrowserFile file, string caption, CancellationToken ct)
+    {
+        using var content = new MultipartFormDataContent();
+        await using var input = file.OpenReadStream(MarksBaseballCards.Shared.Common.CardPhotoLimits.MaxFileBytes, ct);
+        content.Add(new StreamContent(input), "file", "photo"); // The server does not trust a supplied name or MIME type.
+        content.Add(new StringContent(caption), "caption");
+        using var upload = clients.CreateClient("MarksUploads");
+        return await SendAsync<CardPhotoDto>(() => upload.PostAsync($"api/cards/{cardId}/photos", content, ct));
+    }
+    public static CardUpsertDto Editable(CardDto c) => new()
+    {
+        CardNumber = c.CardNumber, PlayerName = c.PlayerName, Description = c.Description, IsPublished = c.IsPublished, RowVersion = c.RowVersion,
+        InPlastic = c.InPlastic, InSet1 = c.InSet1, InSet2 = c.InSet2, InSet3 = c.InSet3, InSet4 = c.InSet4, InSet5 = c.InSet5, InSet6 = c.InSet6,
+        Doubles = c.Doubles, IsRookie = c.IsRookie, IsRoyals = c.IsRoyals, IsForSale = c.IsForSale, Price = c.Price, Condition = c.Condition, ListingNotes = c.ListingNotes
+    };
     public async Task<List<MarketplaceCardDto>> GetMarketplaceAsync(string? search = null, bool includeSold = false)
     {
         var url = $"api/marketplace?includeSold={includeSold}";

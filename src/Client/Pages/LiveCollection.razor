@@ -1,0 +1,4 @@
+@page "/collection"
+<PageTitle>@L["The collection — Mark’s Baseball Cards"]</PageTitle>
+<LiveCatalog InitialSearch="@(CardNumber ?? "")" />
+@code { [SupplyParameterFromQuery(Name = "card")] public string? CardNumber { get; set; } }
