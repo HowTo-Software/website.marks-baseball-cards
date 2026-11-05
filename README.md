@@ -1,11 +1,16 @@
 # Mark's Baseball Cards
 
-An application for exploring Mark's 1991 Topps collection, viewing live sale listings,
+An application for publishing Mark's photographed collection, exploring the separate
+1991 Topps historical checklist, viewing live sale listings,
 buying through Stripe Checkout, and managing inventory through staff workspaces.
 The HTS frontend uses Blazor WebAssembly with an editorial visual identity, light and
 dark themes, and English, Brazilian Portuguese and Spanish interfaces.
 
-**Documentation scope:** the frontend contribution delivered in commit
+**Current development:** [Photo onboarding, SQL Server and release procedures](docs/phase-3-development/photo-onboarding.md).
+The admin workspace now supports drafts, real photographs, descriptions and publication,
+with an independent option to sell. Database changes require explicit operator deployment.
+
+**Historical documentation baseline:** the frontend contribution delivered in commit
 [`39a8ecc`](https://github.com/HowTo-Software/Marks-BaseBallCards/commit/39a8ecc90bcca4a0eb0d109360f7bae42d4f1e76).
 Backend code is described where it affects the client. Hank's backend restructuring,
 production infrastructure and operational procedures require his documentation and
@@ -20,9 +25,9 @@ dotnet restore src/Client/MarksBaseballCards.Client.csproj
 dotnet run --project src/Client --no-launch-profile --urls http://localhost:5248
 ```
 
-Open [localhost:5248](http://localhost:5248). Home, the collection archive and the
-collection story work with local assets. The marketplace, staff login, inventory,
-dashboard and payments require the configured backend.
+Open [localhost:5248](http://localhost:5248). The historical archive at `/archive` and
+collection story work with local assets. Home's featured cards, the real collection,
+marketplace, staff login, inventory, dashboard and payments require the configured backend.
 
 The client sends API requests to its own origin. The standalone preview does not
 proxy requests to a separately started API. For the integrated experience, use the
@@ -33,11 +38,12 @@ and the [backend reference](docs/phase-5-deployment/backend-reference.md).
 
 | Experience | Routes | Data and access |
 | --- | --- | --- |
-| Introduction and collection story | `/`, `/about` | Local content and original illustrations |
-| Original archive | `/collection` | 64 historical records; search, filters, sorting, grid/list views and dialogs |
-| Live marketplace | `/marketplace` | API listings, condition, notes, USD prices and Stripe Checkout |
+| Introduction and collection story | `/`, `/about` | Local content; Home also loads published cards from the API |
+| Real collection | `/collection` | Published SQL-backed records and photographs; purchase is optional |
+| Original archive | `/archive` | Separate 64-record historical checklist with original illustrations |
+| Live marketplace | `/marketplace` | Published sale listings, photographs, USD prices and Stripe Checkout |
 | Staff access | `/login` | Owner-provided accounts; no public registration flow |
-| Inventory workspace | `/admin` | `Admin` role; create/edit, list, record sales and delete |
+| Inventory workspace | `/admin` | `Admin` role; drafts, descriptions, photo upload/cover/removal, publish/unpublish, optional sale and deletion |
 | Statistics and activity | `/system` | `SystemAdmin` role; current inventory, six filing sets and up to 200 history entries |
 | Payment status | `/buy/success` | Confirms payment only when the API reports `paid` |
 
@@ -53,6 +59,9 @@ Royals markers retain the collector's annotations. Filing percentages describe t
 records currently in the database. Language selection changes formatting and copy;
 prices remain in USD.
 
+The real collection is separate: its photos and descriptions are entered by the owner.
+Drafts remain private. A published card can be displayed without being offered for sale.
+
 ## Repository map
 
 | Location | Responsibility |
@@ -61,6 +70,9 @@ prices remain in USD.
 | [src/Shared](src/Shared) | DTOs and role names shared with the client |
 | [src/Api](src/Api) | ASP.NET Core API, SQL Server/EF Core, JWT, Stripe and hosting of the client |
 | [docker-compose.yml](docker-compose.yml) | Existing web container configuration; no database service |
+| [deploy/sql](deploy/sql) | Reviewed idempotent schema script and least-privilege SQL grants |
+| [scripts](scripts) | Offline SQL script generation |
+| [tests](tests) | Isolated API, authorization, image processing and optional SQL Server tests |
 | [docs](docs/README.md) | Documentation organized by lifecycle phase |
 
 There is no npm build pipeline in this repository. The frontend uses Razor, C#, CSS
@@ -72,6 +84,8 @@ and native browser JavaScript. Dependencies and hosting boundaries are detailed 
 Start with the [documentation index](docs/README.md), or go directly to:
 
 - [Environment and development setup](docs/phase-3-development/onboarding.md)
+- [Photo onboarding and SQL Server rollout](docs/phase-3-development/photo-onboarding.md)
+- [Create the admin securely and configure encryption](docs/security/photo-onboarding-review.md)
 - [Frontend design and source map](docs/phase-2-design/technical-design.md)
 - [Client/API contracts](docs/phase-2-design/api-specification.md)
 - [Themes and translation maintenance](docs/phase-3-development/themes-and-languages.md)
@@ -84,23 +98,26 @@ Start with the [documentation index](docs/README.md), or go directly to:
 ## Local API development example
 
 ```powershell
-$env:ConnectionStrings__Default = "Server=192.168.1.212,1433;Database=Website_Application_MarksBaseballCardsDb;User Id=sa;Password=...;TrustServerCertificate=True"
-dotnet run --project src/Api
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+# Supply ConnectionStrings__Default and Jwt__Key securely for an isolated local database.
+# See .env.example and the photo onboarding guide; dotnet run does not load .env automatically.
+dotnet run --project src/Api --no-launch-profile --urls http://localhost:8090
 ```
 
 ## Current validation and release limits
 
-The October 2 implementation notes record a successful client build and public UI
-inspection in Chromium, including themes, languages and mobile layouts. They also
-record an existing API dependency warning. This documentation reorganization does
-not constitute a new build, security audit or deployment verification.
+The photo onboarding work includes an automated suite and a SQL Server CI service.
+Local tests exercise real API authorization and image processing using isolated SQLite;
+the SQL Server rowversion test requires a separate isolated instance and is skipped locally
+when none is configured. The workflow runs tests against a disposable SQL Server service.
+Browser workflow checks used mocked API responses, not production data.
 
-No automated test suite is committed. The GitHub Actions workflow builds the API on
-pull requests and deploys on pushes to `main` or manual dispatch; it does not verify
-browser behavior. Authenticated staff mutations, a production database, real payments
-and fulfillment were not exercised during the frontend review. See the
-[CI/CD notes](docs/phase-5-deployment/ci-cd.md) and the
-[handoff](docs/phase-1-inception/repository-assessment.md).
+No production database, real payments or deployed container was exercised for this change.
+Existing inventory starts unpublished after the migration and requires owner review before
+public release. Normal web startup no longer migrates or seeds. See the
+[rollout and validation details](docs/phase-3-development/photo-onboarding.md).
+Pushes to `main` and manual workflow dispatch can still deploy automatically; this work
+must be staged with the operator before merging. Older documentation records its own baseline.
 
 ## Contributions, security and licensing
 

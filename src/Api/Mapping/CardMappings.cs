@@ -7,6 +7,8 @@ public static class CardMappings
 {
     public static CardDto ToDto(this Card c) => new()
     {
+        Description = c.Description, IsPublished = c.IsPublished, RowVersion = c.RowVersion,
+        PhotoCount = c.Photos.Count, Photos = c.Photos.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(ToDto).ToList(),
         Id = c.Id,
         CardNumber = c.CardNumber,
         PlayerName = c.PlayerName,
@@ -31,6 +33,9 @@ public static class CardMappings
 
     public static MarketplaceCardDto ToMarketplaceDto(this Card c) => new()
     {
+        Description = c.Description, IsForSale = c.IsForSale,
+        CoverPhotoId = c.Photos.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(p => (Guid?)p.Id).FirstOrDefault(),
+        Photos = c.Photos.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(ToDto).ToList(),
         Id = c.Id,
         CardNumber = c.CardNumber,
         PlayerName = c.PlayerName,
@@ -57,6 +62,8 @@ public static class CardMappings
     /// <summary>Copies editable fields from an upsert payload onto the entity.</summary>
     public static void ApplyUpsert(this Card c, CardUpsertDto dto)
     {
+        c.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
+        c.IsPublished = dto.IsPublished;
         c.CardNumber = dto.CardNumber.Trim();
         c.PlayerName = dto.PlayerName.Trim();
         c.InPlastic = dto.InPlastic;
@@ -74,4 +81,9 @@ public static class CardMappings
         c.Condition = string.IsNullOrWhiteSpace(dto.Condition) ? null : dto.Condition.Trim();
         c.ListingNotes = string.IsNullOrWhiteSpace(dto.ListingNotes) ? null : dto.ListingNotes.Trim();
     }
+
+    public static CardPhotoDto ToDto(this CardPhoto p) => new()
+    {
+        Id = p.Id, Caption = p.Caption, Position = p.Position, Width = p.Width, Height = p.Height
+    };
 }

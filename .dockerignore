@@ -3,6 +3,12 @@
 **/obj/
 **/out/
 **/publish/
+**/App_Data/
+artifacts/
+tests/
+tools/
+scripts/
+deploy/
 
 # Git / IDE
 .git/
@@ -20,5 +26,5 @@
 *.md
 **/*.user
 
-# Source spreadsheet (data is embedded as seed-cards.json)
+# Historical source spreadsheet (not needed by the runtime)
 *.xlsx

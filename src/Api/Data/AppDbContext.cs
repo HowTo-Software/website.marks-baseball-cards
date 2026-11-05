@@ -8,6 +8,7 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<Card> Cards => Set<Card>();
+    public DbSet<CardPhoto> CardPhotos => Set<CardPhoto>();
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<CardHistory> History => Set<CardHistory>();
 
@@ -17,6 +18,9 @@ public class AppDbContext : DbContext
 
         b.Entity<Card>(e =>
         {
+            e.Property(c => c.Description).HasMaxLength(2000);
+            e.HasIndex(c => new { c.IsPublished, c.IsForSale, c.IsSold, c.Id });
+            e.HasIndex(c => new { c.IsPublished, c.Id });
             e.Property(c => c.CardNumber).HasMaxLength(20).IsRequired();
             e.Property(c => c.PlayerName).HasMaxLength(120).IsRequired();
             e.Property(c => c.Condition).HasMaxLength(60);
@@ -27,6 +31,13 @@ public class AppDbContext : DbContext
             e.Property(c => c.RowVersion).IsRowVersion();
             e.HasIndex(c => c.CardNumber).IsUnique();
             e.HasIndex(c => c.IsForSale);
+        });
+
+        b.Entity<CardPhoto>(e =>
+        {
+            e.Property(p => p.Caption).HasMaxLength(200).IsRequired();
+            e.HasOne(p => p.Card).WithMany(c => c.Photos).HasForeignKey(p => p.CardId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(p => new { p.CardId, p.Position, p.Id });
         });
 
         b.Entity<AppUser>(e =>

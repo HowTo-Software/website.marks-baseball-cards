@@ -1,0 +1,68 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="card-photo-selection">
+    <span class="form-label" id="@(_id + "-label")">@L["Photographs"]</span>
+    <label class="photo-pick-target" for="@_id">
+        <Icon Name="plus" Size="24" />
+        <strong>@L[_files.Count == 0 ? "Add photographs" : "Change selection"]</strong>
+        <span>@L["Front, back or details"]</span>
+        <InputFile @ref="_input" id="@_id" accept="image/jpeg,image/png,image/webp" multiple
+                   aria-labelledby="@(_id + "-label")" aria-describedby="@(_id + "-help")" OnChange="Select" disabled="@(Busy || Available == 0)" />
+    </label>
+    <p class="small-note" id="@(_id + "-help")">@L["JPEG, PNG or WebP. Up to 30 MB per photo; six photos per card."]</p>
+    @if (Available == 0) { <p class="small-note">@L["This card already has six photos. Remove one before adding another."]</p> }
+    @if (!string.IsNullOrWhiteSpace(_error)) { <p role="alert" class="form-error">@L[_error]</p> }
+    @if (_files.Count > 0)
+    {
+        <div class="selected-photo-grid">
+            @for (var i = 0; i < _files.Count; i++)
+            {
+                var file = _files[i];
+                <figure>
+                    @if (i < _previews.Length) { <img src="@_previews[i]" alt="@file.Name" decoding="async" /> }
+                    <figcaption title="@file.Name">@file.Name <span>@((file.Size / 1024d / 1024d).ToString("0.0", CultureInfo.CurrentCulture)) MB</span></figcaption>
+                </figure>
+            }
+        </div>
+        <p class="small-note">@L["Photos are uploaded when you save. A new selection replaces the previous one."]</p>
+    }
+</div>
+
+@code {
+    [Parameter] public int Available { get; set; } = CardPhotoLimits.MaxPhotos;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>> Changed { get; set; }
+    private readonly string _id = $"card-images-{Guid.NewGuid():N}";
+    private InputFile? _input;
+    private IJSObjectReference? _module;
+    private IReadOnlyList<IBrowserFile> _files = [];
+    private string[] _previews = [];
+    private string? _error;
+
+    private async Task Select(InputFileChangeEventArgs args)
+    {
+        _files = []; _previews = []; _error = null;
+        await Changed.InvokeAsync(_files);
+        _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/photo-picker.js");
+        await _module.InvokeVoidAsync("clearPreviews", _input!.Element);
+        if (args.FileCount > Available) { _error = "Choose no more photos than the card's remaining spaces."; return; }
+        var files = args.GetMultipleFiles(CardPhotoLimits.MaxPhotos);
+        if (files.Any(file => file.Size > CardPhotoLimits.MaxFileBytes)) { _error = "Photos must be 30 MB or smaller."; return; }
+        _files = files;
+        _previews = await _module.InvokeAsync<string[]>("createPreviews", _input.Element, Available);
+        await Changed.InvokeAsync(_files);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        base.Dispose();
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("clearPreviews", _input?.Element);
+            await _module.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
+    }
+}

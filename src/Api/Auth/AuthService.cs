@@ -18,7 +18,7 @@ public class AuthService
 
     // Pre-computed hash so unknown-user logins still perform a verify (constant-ish timing).
     private static readonly string DummyHash =
-        new PasswordHasher<AppUser>().HashPassword(new AppUser(), "::timing-mitigation::");
+        PasswordHashing.Create<AppUser>().HashPassword(new AppUser(), "::timing-mitigation::");
 
     private const string GenericError = "Invalid username or password.";
 
@@ -28,7 +28,7 @@ public class AuthService
     private readonly AppDbContext _db;
     private readonly TokenService _tokens;
     private readonly HistoryWriter _history;
-    private readonly PasswordHasher<AppUser> _hasher = new();
+    private readonly PasswordHasher<AppUser> _hasher = PasswordHashing.Create<AppUser>();
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(AppDbContext db, TokenService tokens, HistoryWriter history, ILogger<AuthService> logger)
@@ -56,8 +56,9 @@ public class AuthService
 
         if (user.LockoutEndUtc is { } lockedUntil && lockedUntil > DateTime.UtcNow)
         {
+            _hasher.VerifyHashedPassword(new AppUser(), DummyHash, request.Password);
             await _history.LogAsync("LoginFailed", username, $"Locked account from {clientIp}.");
-            return (false, null, "This account is temporarily locked due to failed sign-ins. Please try again later.");
+            return (false, null, GenericError);
         }
 
         var verification = _hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);

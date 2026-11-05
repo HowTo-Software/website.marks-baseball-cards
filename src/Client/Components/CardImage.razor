@@ -1,0 +1,17 @@
+@if (PhotoId is { } id && !_failed)
+{
+    <img class="card-photograph" src="@($"api/card-photos/{id}/{(Large ? "image" : "thumbnail")}")" alt="@PlayerName" loading="lazy" decoding="async" width="@(Large ? 1000 : 360)" height="@(Large ? 1400 : 504)" @onerror="() => _failed = true" />
+}
+else
+{
+    <CardArt Number="Number" PlayerName="PlayerName" />
+}
+@code {
+    [Parameter] public Guid? PhotoId { get; set; }
+    [Parameter] public string Number { get; set; } = "";
+    [Parameter] public string PlayerName { get; set; } = "";
+    [Parameter] public bool Large { get; set; }
+    private Guid? _last;
+    private bool _failed;
+    protected override void OnParametersSet() { if (_last != PhotoId) { _failed = false; _last = PhotoId; } }
+}

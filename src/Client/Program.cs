@@ -27,6 +27,9 @@ builder.Services.AddHttpClient("MarksApi", client =>
     .AddHttpMessageHandler<BearerTokenHandler>();
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("MarksApi"));
+builder.Services.AddHttpClient("MarksUploads", client =>
+    { client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress); client.Timeout = TimeSpan.FromSeconds(60); })
+    .AddHttpMessageHandler<BearerTokenHandler>();
 
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<CollectionCatalog>();

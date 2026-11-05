@@ -17,7 +17,7 @@ namespace MarksBaseballCards.Api.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.9")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -85,6 +85,10 @@ namespace MarksBaseballCards.Api.Data.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<int>("Doubles")
                         .HasColumnType("int");
 
@@ -110,6 +114,9 @@ namespace MarksBaseballCards.Api.Data.Migrations
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsForSale")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPublished")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsRookie")
@@ -159,6 +166,10 @@ namespace MarksBaseballCards.Api.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("IsForSale");
+
+                    b.HasIndex("IsPublished", "Id");
+
+                    b.HasIndex("IsPublished", "IsForSale", "IsSold", "Id");
 
                     b.ToTable("Cards");
                 });
@@ -210,6 +221,42 @@ namespace MarksBaseballCards.Api.Data.Migrations
                     b.ToTable("History");
                 });
 
+            modelBuilder.Entity("MarksBaseballCards.Api.Entities.CardPhoto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Bytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Caption")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("CardId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardId", "Position", "Id");
+
+                    b.ToTable("CardPhotos");
+                });
+
             modelBuilder.Entity("MarksBaseballCards.Api.Entities.CardHistory", b =>
                 {
                     b.HasOne("MarksBaseballCards.Api.Entities.Card", "Card")
@@ -218,6 +265,22 @@ namespace MarksBaseballCards.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Card");
+                });
+
+            modelBuilder.Entity("MarksBaseballCards.Api.Entities.CardPhoto", b =>
+                {
+                    b.HasOne("MarksBaseballCards.Api.Entities.Card", "Card")
+                        .WithMany("Photos")
+                        .HasForeignKey("CardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Card");
+                });
+
+            modelBuilder.Entity("MarksBaseballCards.Api.Entities.Card", b =>
+                {
+                    b.Navigation("Photos");
                 });
 #pragma warning restore 612, 618
         }

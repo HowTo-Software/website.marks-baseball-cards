@@ -18,6 +18,7 @@ public class HistoryWriter
         _db.History.Add(new CardHistory
         {
             CardId = card?.Id,
+            Card = card,
             CardNumber = card?.CardNumber ?? string.Empty,
             PlayerName = card?.PlayerName ?? string.Empty,
             Action = action,

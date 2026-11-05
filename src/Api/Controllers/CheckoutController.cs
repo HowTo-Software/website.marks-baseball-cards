@@ -22,14 +22,16 @@ public class CheckoutController : ControllerBase
     private readonly HistoryWriter _history;
     private readonly StripeOptions _stripe;
     private readonly ILogger<CheckoutController> _logger;
+    private readonly string? _publicBaseUrl;
 
     public CheckoutController(
-        AppDbContext db, HistoryWriter history, IOptions<StripeOptions> stripe, ILogger<CheckoutController> logger)
+        AppDbContext db, HistoryWriter history, IOptions<StripeOptions> stripe, ILogger<CheckoutController> logger, IConfiguration configuration)
     {
         _db = db;
         _history = history;
         _stripe = stripe.Value;
         _logger = logger;
+        _publicBaseUrl = configuration["PublicBaseUrl"];
     }
 
     /// <summary>Creates a Stripe Checkout Session for a card and returns the hosted-page URL.</summary>
@@ -47,7 +49,7 @@ public class CheckoutController : ControllerBase
         {
             return NotFound();
         }
-        if (!card.IsForSale || card.IsSold)
+        if (!card.IsPublished || !card.IsForSale || card.IsSold)
         {
             return Conflict(new { error = "This card is not available for purchase." });
         }
@@ -56,7 +58,10 @@ public class CheckoutController : ControllerBase
             return Conflict(new { error = "This card does not have a price set." });
         }
 
-        var origin = $"{Request.Scheme}://{Request.Host}";
+        if (!Uri.TryCreate(_publicBaseUrl, UriKind.Absolute, out var publicUri) || publicUri.Scheme != "https"
+            || !string.IsNullOrEmpty(publicUri.UserInfo) || !string.IsNullOrEmpty(publicUri.Query) || !string.IsNullOrEmpty(publicUri.Fragment))
+            return StatusCode(503, new { error = "The public checkout return address is not configured securely." });
+        var origin = publicUri.AbsoluteUri.TrimEnd('/');
         var options = new SessionCreateOptions
         {
             Mode = "payment",

@@ -19,3 +19,8 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    volumes:
+      - card_photos:/data/card-photos
+
+volumes:
+  card_photos:

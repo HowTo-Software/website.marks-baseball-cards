@@ -1,21 +1,18 @@
-using System.Reflection;
-using System.Text.Json;
 using MarksBaseballCards.Api.Entities;
+using MarksBaseballCards.Api.Auth;
 using MarksBaseballCards.Shared.Common;
-using MarksBaseballCards.Shared.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarksBaseballCards.Api.Data;
 
-/// <summary>Seeds the two admin accounts and the 1991 Topps card data on first run.</summary>
+/// <summary>Initializes explicitly configured staff only. Live card data is entered by the owner.</summary>
 public static class DbSeeder
 {
     public static async Task SeedAsync(AppDbContext db, IConfiguration config, ILogger logger)
     {
         await SeedUsersAsync(db, config, logger);
         await SeedConfiguredStaffAsync(db, config, logger);
-        await SeedCardsAsync(db, logger);
     }
 
     private static async Task SeedUsersAsync(AppDbContext db, IConfiguration config, ILogger logger)
@@ -25,7 +22,13 @@ public static class DbSeeder
             return;
         }
 
-        var hasher = new PasswordHasher<AppUser>();
+        var adminPassword = config["Seed:AdminPassword"];
+        var systemPassword = config["Seed:SystemAdminPassword"];
+        if (string.IsNullOrWhiteSpace(adminPassword) || adminPassword.Length < 16 || adminPassword.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(systemPassword) || systemPassword.Length < 16 || systemPassword.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Initial staff passwords must be explicitly configured (16+ characters); default credentials are forbidden.");
+
+        var hasher = PasswordHashing.Create<AppUser>();
         var now = DateTime.UtcNow;
 
         var admin = new AppUser
@@ -34,7 +37,7 @@ public static class DbSeeder
             Role = Roles.Admin,
             CreatedAtUtc = now
         };
-        admin.PasswordHash = hasher.HashPassword(admin, config["Seed:AdminPassword"] ?? "ChangeMe!Admin123");
+        admin.PasswordHash = hasher.HashPassword(admin, adminPassword);
 
         var systemAdmin = new AppUser
         {
@@ -42,55 +45,16 @@ public static class DbSeeder
             Role = Roles.SystemAdmin,
             CreatedAtUtc = now
         };
-        systemAdmin.PasswordHash = hasher.HashPassword(systemAdmin, config["Seed:SystemAdminPassword"] ?? "ChangeMe!System123");
+        systemAdmin.PasswordHash = hasher.HashPassword(systemAdmin, systemPassword);
 
         db.Users.AddRange(admin, systemAdmin);
         await db.SaveChangesAsync();
         logger.LogInformation("Seeded admin accounts: {Admin}, {SystemAdmin}.", admin.Username, systemAdmin.Username);
     }
 
-    private static async Task SeedCardsAsync(AppDbContext db, ILogger logger)
-    {
-        if (await db.Cards.AnyAsync())
-        {
-            return;
-        }
-
-        var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = $"{assembly.GetName().Name}.Data.seed-cards.json";
-        await using var stream = assembly.GetManifestResourceStream(resourceName)
-            ?? throw new InvalidOperationException($"Embedded seed resource '{resourceName}' was not found.");
-
-        var seed = await JsonSerializer.DeserializeAsync<List<CardUpsertDto>>(
-            stream, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
-
-        var now = DateTime.UtcNow;
-        var cards = seed.Select(c => new Card
-        {
-            CardNumber = c.CardNumber,
-            PlayerName = c.PlayerName,
-            InPlastic = c.InPlastic,
-            InSet1 = c.InSet1,
-            InSet2 = c.InSet2,
-            InSet3 = c.InSet3,
-            InSet4 = c.InSet4,
-            InSet5 = c.InSet5,
-            InSet6 = c.InSet6,
-            Doubles = c.Doubles,
-            IsRookie = c.IsRookie,
-            IsRoyals = c.IsRoyals,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now
-        }).ToList();
-
-        db.Cards.AddRange(cards);
-        await db.SaveChangesAsync();
-        logger.LogInformation("Seeded {Count} cards from 1991 Topps data.", cards.Count);
-    }
-
     /// <summary>
     /// Reconciles managed staff accounts defined in configuration (Seed:StaffUsers).
-    /// Runs every startup and is idempotent: creates the account if missing, otherwise
+    /// Runs only during explicit initialization and is idempotent: creates the account if missing, otherwise
     /// updates its password and role to match config when they differ. Entries without a
     /// password are skipped (so a placeholder won't create or clobber an account).
     /// </summary>
@@ -102,7 +66,7 @@ public static class DbSeeder
             return;
         }
 
-        var hasher = new PasswordHasher<AppUser>();
+        var hasher = PasswordHashing.Create<AppUser>();
         var changes = 0;
 
         foreach (var entry in staff)
@@ -115,6 +79,8 @@ public static class DbSeeder
                 continue;
             }
 
+            if (entry.Password.Length < 16 || entry.Password.Length > 128 || entry.Password.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Managed staff passwords require a unique 16-128 character value.");
             var role = NormalizeRole(entry.Role);
             var existing = await db.Users.FirstOrDefaultAsync(u => u.Username == username);
 

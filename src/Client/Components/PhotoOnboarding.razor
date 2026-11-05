@@ -1,0 +1,87 @@
+@implements IDisposable
+@inject ApiClient Api
+
+<section class="workspace-panel photo-onboarding" aria-labelledby="photo-heading">
+    <div class="panel-heading"><h2 id="photo-heading">@L["Photos and publication"]</h2><button type="button" class="button button-outline button-small" disabled="@_busy" @onclick="Close">@L["Close"]</button></div>
+    @if (!string.IsNullOrWhiteSpace(_error)) { <p role="alert" class="form-error">@L[_error]</p> }
+    @if (_card is not null)
+    {
+        <h3>#@_card.CardNumber · @_card.PlayerName</h3>
+        <p><span class="status-tag">@L[_card.IsPublished ? "Published" : "Draft"]</span> @_card.Photos.Count / 6 @L["photos"]</p>
+        <div class="photo-upload-fields">
+            <label class="form-label" for="photo-caption">@L["Photo caption (front, back or detail)"]</label>
+            <input id="photo-caption" class="form-control" maxlength="200" @bind="_caption" disabled="@_busy" />
+            <label class="form-label" for="card-photo">@L["Add photographs"]</label>
+            <InputFile id="card-photo" accept="image/jpeg,image/png,image/webp" multiple OnChange="Upload" disabled="@(_busy || _card.Photos.Count >= 6)" />
+            <p class="small-note">@L["JPEG, PNG or WebP. Up to 30 MB and 16 megapixels per photo; six photos per card. Metadata is removed."]</p>
+            @if (_busy) { <p role="status">@L["Processing photographs. Please keep this page open."]</p> }
+        </div>
+        <div class="photo-grid">
+            @foreach (var photo in _card.Photos.OrderBy(p => p.Position))
+            {
+                <article @key="photo.Id" class="photo-tile">
+                    @if (_previews.TryGetValue(photo.Id, out var preview)) { <img src="@preview" alt="@(string.IsNullOrWhiteSpace(photo.Caption) ? _card.PlayerName : photo.Caption)" width="360" height="504" /> }
+                    <p>@photo.Caption</p>
+                    <div class="table-actions"><button type="button" class="table-action" disabled="@(_busy || photo.Position == _card.Photos.Min(p => p.Position))" @onclick="() => ChangePhoto(photo.Id, false)">@L["Use as cover"]</button><button type="button" class="table-action danger" disabled="@_busy" @onclick="() => ChangePhoto(photo.Id, true)">@L["Remove photo"]</button></div>
+                </article>
+            }
+        </div>
+        <div class="form-actions"><button class="button button-primary" type="button" disabled="@(_busy || (!_card.IsPublished && (_card.Photos.Count == 0 || string.IsNullOrWhiteSpace(_card.Description))))" @onclick="Publish">@L[_card.IsPublished ? "Unpublish card" : "Publish card"]</button><p class="small-note">@L["Publishing requires a description and a photograph. Drafts and their photos are not public."]</p></div>
+    }
+</section>
+@code {
+    [Parameter] public int CardId { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+    [Parameter] public EventCallback Close { get; set; }
+    private CardDto? _card;
+    private int _loadedId;
+    private bool _busy;
+    private string _caption = "", _error = "";
+    private readonly Dictionary<Guid, string> _previews = [];
+    private readonly CancellationTokenSource _life = new();
+    private CancellationToken _token;
+    private bool _disposed;
+    protected override void OnInitialized() { base.OnInitialized(); _token = _life.Token; }
+    protected override async Task OnParametersSetAsync() { if (_loadedId != CardId) { _loadedId = CardId; try { await Load(); } catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { _error = "The card could not be loaded."; } } }
+    private async Task Load()
+    {
+        _card = await Api.GetCardAsync(CardId, _token);
+        if (_card is null) { _error = "The card could not be loaded."; return; }
+        _previews.Clear();
+        foreach (var photo in _card.Photos) _previews[photo.Id] = await Api.PhotoPreviewAsync(photo.Id);
+    }
+    private async Task Upload(InputFileChangeEventArgs args)
+    {
+        if (_busy || _card is null) return;
+        _busy = true; _error = "";
+        try
+        {
+            var files = args.GetMultipleFiles(Math.Max(1, 6 - _card.Photos.Count));
+            foreach (var file in files)
+            {
+                if (file.Size > CardPhotoLimits.MaxFileBytes) { _error = "Photos must be 30 MB or smaller."; break; }
+                var result = await Api.UploadPhotoAsync(CardId, file, _caption, _token);
+                if (!result.Ok) { _error = result.Error ?? "The photograph could not be uploaded."; break; }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or HttpRequestException or OperationCanceledException) { _error = "The upload could not finish. Refresh to check saved photos before trying again."; }
+        finally { if (!_disposed) { try { await Load(); await Changed.InvokeAsync(); } catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { _error = "The card could not be loaded."; } } _busy = false; }
+    }
+    private async Task ChangePhoto(Guid id, bool remove)
+    {
+        if (_busy) return;
+        _busy = true; _error = "";
+        try { var result = remove ? await Api.DeletePhotoAsync(CardId, id) : await Api.SetCoverAsync(CardId, id); if (!result.Ok) _error = result.Error ?? "The photograph could not be updated."; await Load(); await Changed.InvokeAsync(); }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { _error = "The photograph could not be updated."; }
+        finally { _busy = false; }
+    }
+    private async Task Publish()
+    {
+        if (_busy || _card is null) return;
+        _busy = true; _error = "";
+        try { var dto = ApiClient.Editable(_card); dto.IsPublished = !_card.IsPublished; if (!dto.IsPublished) dto.IsForSale = false; var result = await Api.UpdateCardAsync(CardId, dto); if (!result.Ok) _error = result.Error ?? "The card could not be published."; await Load(); await Changed.InvokeAsync(); }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { _error = "The card could not be published."; }
+        finally { _busy = false; }
+    }
+    public override void Dispose() { _disposed = true; _life.Cancel(); _life.Dispose(); base.Dispose(); }
+}

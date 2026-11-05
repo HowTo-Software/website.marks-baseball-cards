@@ -3,6 +3,9 @@ namespace MarksBaseballCards.Api.Entities;
 /// <summary>A single baseball card in the collection / inventory.</summary>
 public class Card
 {
+    public string? Description { get; set; }
+    public bool IsPublished { get; set; }
+    public List<CardPhoto> Photos { get; set; } = [];
     public int Id { get; set; }
 
     public string CardNumber { get; set; } = string.Empty;
